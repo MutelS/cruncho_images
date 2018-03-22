@@ -24,9 +24,9 @@ libraries:
   version: "2.6"
 - name: ssl
   version: latest
-skip_files:
-- env/
-- lib/
-- tornado/
-- settings/
+#skip_files:
+#- env/
+#- lib/
+#- tornado/
+#- settings/
 
