@@ -45,21 +45,26 @@ class MainPage(webapp2.RequestHandler):
     def get(self):
         self.bucket_name = 'cruncho-images.appspot.com'
         self.response.headers['Content-Type'] = 'text/plain'
-
         image_name = self.request.get('image_name')
+        image_url = self.request.get('image_url')
 
-        client = self.get_storage_client()
+        if image_url and image_name:
+            image_name = self.request.get('image_name')
 
-        bucket = client.bucket(self.bucket_name)
-        blob = bucket.get_blob(image_name)
+            client = self.get_storage_client()
 
-        if blob:
-            url = blob.public_url
+            bucket = client.bucket(self.bucket_name)
+            blob = bucket.get_blob(image_name)
+
+            if blob:
+                url = blob.public_url
+            else:
+                blob = bucket.blob(image_name)
+                url = blob.public_url
+                self.save_image(image_url, image_name)
+            return self.response.write(url)
         else:
-            blob = bucket.blob(image_name)
-            url = blob.public_url
-            self.save_image(self.request.get('image_url'), self.request.get('image_name'))
-        return self.response.write(url)
+            return self.response.write('\n\nNo file name or URL!\n')
 
 
 app = webapp2.WSGIApplication([('/', MainPage)],
