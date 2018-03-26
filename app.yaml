@@ -1,32 +1,26 @@
-#application: cruncho-images
+#application: cruncho
 runtime: python27
 api_version: 1
 threadsafe: true
 
 handlers:
-- url: /.*
+- url: .*
   script: main.app
-#- url: /api/v1/
-#  script: images.img.application
-#- url: /.*
-#  script: images.img.application
+
 
 libraries:
-- name: django
-  version: "latest"
+#- name: django
+#  version: "1.11"
 - name: PIL
   version: "1.1.7"
 - name: webob
-  version: "latest"
+  version: "1.2.3"
 - name: webapp2
   version: "2.5.2"
-- name: pycrypto
-  version: "2.6"
-- name: ssl
-  version: latest
-#skip_files:
-#- env/
-#- lib/
-#- tornado/
-#- settings/
-
+#- name: pycrypto
+#  version: "2.6"
+#- name: ssl
+#  version: latest
+skip_files:
+- env
+- .git

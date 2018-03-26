@@ -5,7 +5,7 @@ import urllib2
 import webapp2
 from google.appengine.api import images, files
 from google.appengine.api.images import images_service_pb
-import lib.google.cloud.storage as storage
+from google.cloud.storage import Client
 
 from requests_toolbelt.adapters import appengine
 appengine.monkeypatch()
@@ -39,7 +39,7 @@ class MainPage(webapp2.RequestHandler):
         logging.info("url decode: {}".format(url))
 
     def get_storage_client(self):
-        return storage.Client(project='cruncho-images')
+        return Client(project='cruncho-images')
 
     # [START get_default_bucket]
     def get(self):
@@ -67,5 +67,4 @@ class MainPage(webapp2.RequestHandler):
             return self.response.write('\n\nNo file name or URL!\n')
 
 
-app = webapp2.WSGIApplication([('/', MainPage)],
-                              debug=True)
+app = webapp2.WSGIApplication([('/', MainPage)], debug=True)
