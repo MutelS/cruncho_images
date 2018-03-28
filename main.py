@@ -48,7 +48,7 @@ class MainPage(webapp2.RequestHandler):
         return thumbnail
 
     def get(self):
-        self.response.headers.add_header('Access-Control-Allow-Origin', 'crunchoo.com')
+        self.response.headers.add_header('Access-Control-Allow-Origin', 'cruncho.com')
         logging.info("self.response: {}".format(self.response))
         logging.info("self.request: {}".format(self.request))
         self.bucket_name = 'cruncho-images.appspot.com'
@@ -165,19 +165,19 @@ class SaveImageOnStorage(webapp2.RequestHandler):
 
         logging.info("url decode: {}".format(blob.public_url))
 
-# app = webapp2.WSGIApplication([('/img', MainPage),
-#                                ('/admin', AdminPage),
-#                                ('/auth', AuthPage),
-#                                ('/save_image', SaveImageOnStorage)], debug=True)
+app = webapp2.WSGIApplication([('/img', MainPage),
+                               ('/admin', AdminPage),
+                               ('/auth', AuthPage),
+                               ('/save_image', SaveImageOnStorage)], debug=True)
 
 
-webapp = webapp2.WSGIApplication([
-    ('/img', MainPage),
-    ('/admin', AdminPage),
-    ('/auth', AuthPage),
-    ('/save_image', SaveImageOnStorage)
-], debug=True)
-
-app = CorsApplication(webapp, CorsOptions(allow_origins=['crunchoo.com'],
-                                          allow_headers=['X-Foo'],
-                                          continue_on_error=True))
+# webapp = webapp2.WSGIApplication([
+#     ('/img', MainPage),
+#     ('/admin', AdminPage),
+#     ('/auth', AuthPage),
+#     ('/save_image', SaveImageOnStorage)
+# ], debug=True)
+#
+# app = CorsApplication(webapp, CorsOptions(allow_origins=['crunchoo.com'],
+#                                           allow_headers=['X-Foo'],
+#                                           continue_on_error=True))

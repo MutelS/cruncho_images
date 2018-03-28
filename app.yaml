@@ -29,3 +29,8 @@ libraries:
 skip_files:
 - env
 - .git
+- \.gitignore
+- ^\.git/.*
+- ^(.*/)?#.*#$
+- ^(.*/)?.*~$
+- ^(.*/)?.*\.py[co]$
