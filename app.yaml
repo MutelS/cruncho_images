@@ -6,7 +6,12 @@ threadsafe: true
 handlers:
 - url: .*
   script: main.app
-
+#  login: admin
+#- url: /images
+#  static_dir: /cruncho-images
+#  http_headers:
+#    Access-Control-Allow-Origin: '*'
+#    Access-Control-Allow-Origin: http://cruncho-images.appspot.com
 
 libraries:
 #- name: django
