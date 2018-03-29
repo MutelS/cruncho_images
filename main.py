@@ -1,20 +1,26 @@
 import logging
 import urllib2
 import webapp2
+import settings
 from PIL import Image
 
 from google.appengine.api import images
 from google.appengine.api.images import images_service_pb
 from google.appengine.api import taskqueue
 from google.cloud.storage import Client
-from google.appengine.ext import db
-from google.appengine.api import users
+from google.appengine.ext import db, blobstore
+#from google.appengine.api import users
 
-from cors.cors_application import CorsApplication
-from cors.cors_options import CorsOptions
+#from cors.cors_application import CorsApplication
+#from cors.cors_options import CorsOptions
 
 from requests_toolbelt.adapters import appengine
+
 appengine.monkeypatch()
+
+
+def get_storage_client():
+    return Client(project=settings.PROJECT_NAME)
 
 
 class Cruncho_Image(db.Model):
@@ -25,43 +31,40 @@ class Cruncho_Image(db.Model):
 
 
 class MainPage(webapp2.RequestHandler):
-    image_name, image_url, bucket_name, image_width, image_height = None, None, None, None, None
+    image_name, image_url, bucket_name, image_width, image_height, quality = None, None, None, None, None, None
 
     def resize_image(self, image):
         image.resize(width=int(self.image_width), height=int(self.image_height))
         return image
 
-    def get_storage_client(self):
-        return Client(project='cruncho-images')
-
     def get_thumbnail_image(self, url):
+        logging.info("get thumbnail image by url: {}".format(url))
         image_at_url = urllib2.urlopen(url)
         image_bytes = image_at_url.read()
         image = images.Image(image_bytes)
         if self.image_height and self.image_width:
             image = self.resize_image(image)
-
         jpeg = images_service_pb.OutputSettings.JPEG
-        thumbnail = image.execute_transforms(output_encoding=jpeg, quality=80)
+        thumbnail = image.execute_transforms(output_encoding=jpeg, quality=self.quality)
         return thumbnail
 
+    def get_image_size(self):
+        image_at_url = urllib2.urlopen(str(self.image_url))
+        im = Image.open(image_at_url)
+        self.image_width, self.image_height = im.size
+
     def get(self):
-        self.quality = None
-        self.response.headers.add_header('Access-Control-Allow-Origin', 'cruncho.com')
-        logging.info("self.response: {}".format(self.response))
-        logging.info("self.request: {}".format(self.request))
-        self.bucket_name = 'cruncho-images.appspot.com'
+        self.response.headers.add_header('Access-Control-Allow-Origin', settings.ACCESS_CONTROL_ALLOW_ORIGIN)
+        if self.request.headers.get('Host') not in settings.ACCESS_LIST:
+            return self.response.write('\n\nYou do not have access rights!\n')
+        self.bucket_name = settings.BUCKET_NAME
         self.response.headers['Content-Type'] = 'text/plain'
+        self.quality = self.request.get('quality', None)
         self.image_width = self.request.get('image_width')
         self.image_height = self.request.get('image_height')
         self.image_name = self.request.get('image_name')
         self.image_url = self.request.get('image_url')
-        user = users.get_current_user()
-        logging.info("user: {}".format(user))
-        # if user:
-        #     logging.info("user auth: {}".format(user))
-        #     if users.is_current_user_admin():
-        #         logging.info("is_current_user_admin: {}".format(users.is_current_user_admin()))
+
         if self.image_url and self.image_name:
             self.response.headers['Content-Type'] = 'image/jpeg'
             keyname = self.image_name
@@ -70,87 +73,43 @@ class MainPage(webapp2.RequestHandler):
             if db_image.processed_url:
                 if self.image_height and self.image_width:
                     return self.response.write(self.get_thumbnail_image(str(db_image.processed_url)))
-                else:
-                    return webapp2.redirect(str(db_image.processed_url))
-            else:
-                taskqueue.add(
-                    url='/save_image',
-                    params={'image_url': self.image_url,
-                            'image_name': self.image_name,
-                            'image_width': self.image_width,
-                            'image_height': self.image_height,
-                            'bucket_name': self.bucket_name})
+                return webapp2.redirect(str(db_image.processed_url))
+            taskqueue.add(
+                url='/save_image',
+                params={'image_url': self.image_url,
+                        'image_name': self.image_name,
+                        'image_width': self.image_width,
+                        'image_height': self.image_height,
+                        'bucket_name': self.bucket_name})
 
-                db_image.original_url = self.image_url
-                client = self.get_storage_client()
-                bucket = client.bucket(self.bucket_name)
-                blob = bucket.blob(self.image_name)
-                db_image.processed_url = blob.public_url
-                db_image.save()
+            db_image.original_url = self.image_url
+            client = get_storage_client()
+            bucket = client.bucket(self.bucket_name)
+            blob = bucket.blob(self.image_name)
+            db_image.processed_url = blob.public_url
+            db_image.save()
 
-                logging.info("image: {}".format(db_image))
-                logging.info("url: {}".format(self.image_url))
-                logging.info("image.original_url: {}".format(db_image.original_url))
-                logging.info("image.processed_url: {}".format(db_image.processed_url))
-                if not self.image_height and not self.image_width:
-                    image_at_url = urllib2.urlopen(str(db_image.original_url))
-                    im = Image.open(image_at_url)
-                    self.image_width, self.image_height = im.size
-                return self.response.write(self.get_thumbnail_image(str(db_image.original_url)))
-        else:
-            return self.response.write('\n\nNo file name or URL!\n')
-
-
-class AdminPage(webapp2.RequestHandler):
-    def get(self):
-        user = users.get_current_user()
-        logging.info("user: {}".format(user))
-        if user:
-            logging.info("user auth: {}".format(user))
-            if users.is_current_user_admin():
-                logging.info("is_current_user_admin: {}".format(users.is_current_user_admin()))
-                self.response.write('You are an administrator.')
-            else:
-                self.response.write('You are not an administrator.')
-        else:
-            self.response.write('You are not logged in.')
-
-
-class AuthPage(webapp2.RequestHandler):
-    def get(self):
-        # [START user_details]
-        user = users.get_current_user()
-        if user:
-            nickname = user.nickname()
-            logout_url = users.create_logout_url('/')
-            greeting = 'Welcome, {}! (<a href="{}">sign out</a>)'.format(
-                nickname, logout_url)
-        else:
-            login_url = users.create_login_url('/')
-            greeting = '<a href="{}">Sign in</a>'.format(login_url)
-        # [END user_details]
-        self.response.write(
-            '<html><body>{}</body></html>'.format(greeting))
+            if not self.image_height and not self.image_width:
+                self.get_image_size()
+            return self.response.write(self.get_thumbnail_image(str(db_image.original_url)))
+        return self.response.write('\n\nNo file name or URL!\n')
 
 
 class SaveImageOnStorage(webapp2.RequestHandler):
-
-    def get_storage_client(self):
-        return Client(project='cruncho-images')
+    image_name, image_url, bucket_name, image_width, image_height = None, None, None, None, None
 
     def resize_image(self, image):
         image.resize(width=int(self.image_width), height=int(self.image_height))
         return image
 
     def post(self):
-
         self.image_name = self.request.get('image_name')
         self.image_url = self.request.get('image_url')
         self.image_width = self.request.get('image_width')
         self.image_height = self.request.get('image_height')
         self.bucket_name = self.request.get('bucket_name')
 
-        client = self.get_storage_client()
+        client = get_storage_client()
         bucket = client.bucket(self.bucket_name)
         blob = bucket.blob(self.image_name)
 
@@ -166,11 +125,43 @@ class SaveImageOnStorage(webapp2.RequestHandler):
         thumbnail = image.execute_transforms(output_encoding=jpeg, quality=80)
         blob.upload_from_string(thumbnail, content_type='image/jpeg')
 
-        logging.info("url decode: {}".format(blob.public_url))
+        logging.info("image public url: {}".format(blob.public_url))
+
+
+# class AdminPage(webapp2.RequestHandler):
+#     def get(self):
+#         user = users.get_current_user()
+#         logging.info("user: {}".format(user))
+#         if user:
+#             logging.info("user auth: {}".format(user))
+#             if users.is_current_user_admin():
+#                 logging.info("is_current_user_admin: {}".format(users.is_current_user_admin()))
+#                 self.response.write('You are an administrator.')
+#             else:
+#                 self.response.write('You are not an administrator.')
+#         else:
+#             self.response.write('You are not logged in.')
+#
+#
+# class AuthPage(webapp2.RequestHandler):
+#     def get(self):
+#         # [START user_details]
+#         user = users.get_current_user()
+#         if user:
+#             nickname = user.nickname()
+#             logout_url = users.create_logout_url('/')
+#             greeting = 'Welcome, {}! (<a href="{}">sign out</a>)'.format(
+#                 nickname, logout_url)
+#         else:
+#             login_url = users.create_login_url('/')
+#             greeting = '<a href="{}">Sign in</a>'.format(login_url)
+#         # [END user_details]
+#         self.response.write(
+#             '<html><body>{}</body></html>'.format(greeting))
 
 app = webapp2.WSGIApplication([('/img', MainPage),
-                               ('/admin', AdminPage),
-                               ('/auth', AuthPage),
+                               # ('/admin', AdminPage),
+                               # ('/auth', AuthPage),
                                ('/save_image', SaveImageOnStorage)], debug=True)
 
 

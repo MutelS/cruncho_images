@@ -7,11 +7,10 @@ handlers:
 - url: .*
   script: main.app
 #  login: admin
-#- url: /images
-#  static_dir: /cruncho-images
-#  http_headers:
-#    Access-Control-Allow-Origin: '*'
-#    Access-Control-Allow-Origin: http://cruncho-images.appspot.com
+- url: /images
+  static_dir: static/images
+  http_headers:
+    Access-Control-Allow-Origin: http://cruncho-images.appspot.com
 
 libraries:
 #- name: django
@@ -26,11 +25,14 @@ libraries:
 #  version: "2.6"
 #- name: ssl
 #  version: latest
-#skip_files:
-#- env
-#- .git
-#- \.gitignore
-#- ^\.git/.*
-#- ^(.*/)?#.*#$
-#- ^(.*/)?.*~$
-#- ^(.*/)?.*\.py[co]$
+
+skip_files:
+- env
+- .git
+- \.gitignore
+- ^\.git/.*
+- ^ (. * /)? #. * # $
+- ^ (. * /)?. * ~ $
+- ^ (. * /)?. * \. py [co] $
+- ^ (. * /)?. * / RCS /.*$
+- ^ (. * /)? \ .. * $
