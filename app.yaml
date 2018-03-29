@@ -26,11 +26,11 @@ libraries:
 #  version: "2.6"
 #- name: ssl
 #  version: latest
-skip_files:
-- env
-- .git
-- \.gitignore
-- ^\.git/.*
-- ^(.*/)?#.*#$
-- ^(.*/)?.*~$
-- ^(.*/)?.*\.py[co]$
+#skip_files:
+#- env
+#- .git
+#- \.gitignore
+#- ^\.git/.*
+#- ^(.*/)?#.*#$
+#- ^(.*/)?.*~$
+#- ^(.*/)?.*\.py[co]$

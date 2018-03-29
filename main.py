@@ -1,13 +1,13 @@
 import logging
-import os
 import urllib2
-
 import webapp2
-from google.appengine.api import images, files
+from PIL import Image
+
+from google.appengine.api import images
 from google.appengine.api.images import images_service_pb
 from google.appengine.api import taskqueue
 from google.cloud.storage import Client
-from google.appengine.ext import db, blobstore
+from google.appengine.ext import db
 from google.appengine.api import users
 
 from cors.cors_application import CorsApplication
@@ -17,7 +17,7 @@ from requests_toolbelt.adapters import appengine
 appengine.monkeypatch()
 
 
-class Image(db.Model):
+class Cruncho_Image(db.Model):
   name = db.StringProperty()
   original_url = db.StringProperty()
   processed_url = db.StringProperty()
@@ -25,8 +25,7 @@ class Image(db.Model):
 
 
 class MainPage(webapp2.RequestHandler):
-
-    bucket_name = None
+    image_name, image_url, bucket_name, image_width, image_height = None, None, None, None, None
 
     def resize_image(self, image):
         image.resize(width=int(self.image_width), height=int(self.image_height))
@@ -39,15 +38,15 @@ class MainPage(webapp2.RequestHandler):
         image_at_url = urllib2.urlopen(url)
         image_bytes = image_at_url.read()
         image = images.Image(image_bytes)
-        img = images.get_serving_url(self.image_name)
         if self.image_height and self.image_width:
             image = self.resize_image(image)
-        logging.info("img: {}".format(img))
+
         jpeg = images_service_pb.OutputSettings.JPEG
         thumbnail = image.execute_transforms(output_encoding=jpeg, quality=80)
         return thumbnail
 
     def get(self):
+        self.quality = None
         self.response.headers.add_header('Access-Control-Allow-Origin', 'cruncho.com')
         logging.info("self.response: {}".format(self.response))
         logging.info("self.request: {}".format(self.request))
@@ -59,18 +58,18 @@ class MainPage(webapp2.RequestHandler):
         self.image_url = self.request.get('image_url')
         user = users.get_current_user()
         logging.info("user: {}".format(user))
-        if user:
-            logging.info("user auth: {}".format(user))
-            if users.is_current_user_admin():
-                logging.info("is_current_user_admin: {}".format(users.is_current_user_admin()))
+        # if user:
+        #     logging.info("user auth: {}".format(user))
+        #     if users.is_current_user_admin():
+        #         logging.info("is_current_user_admin: {}".format(users.is_current_user_admin()))
         if self.image_url and self.image_name:
             self.response.headers['Content-Type'] = 'image/jpeg'
             keyname = self.image_name
-            db_image = Image.get_or_insert(keyname, name=self.image_name)
+            db_image = Cruncho_Image.get_or_insert(keyname, name=self.image_name)
 
             if db_image.processed_url:
                 if self.image_height and self.image_width:
-                    return self.response.write(self.get_thumbnail_image(db_image.processed_url))
+                    return self.response.write(self.get_thumbnail_image(str(db_image.processed_url)))
                 else:
                     return webapp2.redirect(str(db_image.processed_url))
             else:
@@ -93,7 +92,11 @@ class MainPage(webapp2.RequestHandler):
                 logging.info("url: {}".format(self.image_url))
                 logging.info("image.original_url: {}".format(db_image.original_url))
                 logging.info("image.processed_url: {}".format(db_image.processed_url))
-                return self.response.write(self.get_thumbnail_image(db_image.original_url))
+                if not self.image_height and not self.image_width:
+                    image_at_url = urllib2.urlopen(str(db_image.original_url))
+                    im = Image.open(image_at_url)
+                    self.image_width, self.image_height = im.size
+                return self.response.write(self.get_thumbnail_image(str(db_image.original_url)))
         else:
             return self.response.write('\n\nNo file name or URL!\n')
 
