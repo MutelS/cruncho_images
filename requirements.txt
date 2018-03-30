@@ -3,3 +3,4 @@ requests
 webapp2
 requests-toolbelt
 google-cloud-storage
+Pillow
