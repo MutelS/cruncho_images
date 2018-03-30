@@ -6,25 +6,15 @@ threadsafe: true
 handlers:
 - url: .*
   script: main.app
-#  login: admin
-- url: /images
-  static_dir: static/images
-  http_headers:
-    Access-Control-Allow-Origin: http://cruncho-images.appspot.com
+
 
 libraries:
-#- name: django
-#  version: "1.11"
 - name: PIL
   version: "1.1.7"
 - name: webob
   version: "1.2.3"
 - name: webapp2
   version: "2.5.2"
-#- name: pycrypto
-#  version: "2.6"
-#- name: ssl
-#  version: latest
 
 skip_files:
 - env
