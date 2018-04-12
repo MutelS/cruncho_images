@@ -3,7 +3,7 @@ import urllib2
 import webapp2
 import settings
 
-from PIL import Image
+import PIL
 
 from google.appengine.api import images, taskqueue
 from google.cloud.storage import Client
@@ -14,6 +14,7 @@ from google.appengine.ext import db
 # from cors.cors_options import CorsOptions
 
 from requests_toolbelt.adapters import appengine
+
 appengine.monkeypatch()
 
 
@@ -46,7 +47,7 @@ def get_thumbnail_image(new_image, url):
 
 def get_image_size(new_image):
     image_at_url = urllib2.urlopen(str(new_image.image_url))
-    im = Image.open(image_at_url)
+    im = PIL.Image.open(image_at_url)
     image_at_url.close()
     new_image.image_width, new_image.image_height = im.size
     return new_image
@@ -66,7 +67,7 @@ def update_image_in_bd(db_image, new_image):
     db_image.save()
 
 
-class Cruncho_Image(db.Model):
+class CrunchoImage(db.Model):
     name = db.StringProperty()
     original_url = db.StringProperty()
     processed_url = db.StringProperty()
@@ -109,13 +110,13 @@ class MainPage(webapp2.RequestHandler):
         }
 
         new_image = Filter(self.request, fields)
-
-        if self.request.headers.get('Host') not in settings.ACCESS_LIST:
-            return self.response.write('\n\nYou do not have access rights!\n')
+        logging.info("kkkk: {}".format(self.request.headers.get('Host')))
+        #        if self.request.headers.get('Host') not in settings.ACCESS_LIST:
+        #        	return self.response.write('\n\nYou do not have access rights!\n')
 
         if new_image.image_url and new_image.image_name:
             self.response.headers['Content-Type'] = 'image/jpeg'
-            db_image = Cruncho_Image.get_or_insert(new_image.image_name, name=new_image.image_name)
+            db_image = CrunchoImage.get_or_insert(new_image.image_name, name=new_image.image_name)
 
             if db_image.processed_url:
                 logging.info("bucket_name: {}".format(new_image.bucket_name))
@@ -180,7 +181,7 @@ class UploadImageOnStorage(webapp2.RequestHandler):
 
         if new_image.image_url and new_image.image_name:
             self.response.headers['Content-Type'] = 'image/jpeg'
-            db_image = Cruncho_Image.get_or_insert(new_image.image_name, name=new_image.image_name)
+            db_image = CrunchoImage.get_or_insert(new_image.image_name, name=new_image.image_name)
             blob = get_blob(new_image)
             update_image_in_bd(db_image, new_image)
             new_image.create_task_save_image
@@ -223,7 +224,7 @@ class UploadImageOnStorage(webapp2.RequestHandler):
 
 app = webapp2.WSGIApplication([
     ('/img', MainPage),
-    ('/upload_image', UploadImageOnStorage)
+    ('/upload_image', UploadImageOnStorage),
     ('/save_image', SaveImageOnStorage)
     # ('/admin', AdminPage),
     # ('/auth', AuthPage),

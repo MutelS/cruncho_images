@@ -1,6 +1,4 @@
-Django==1.11.11
 requests
 webapp2
 requests-toolbelt
 google-cloud-storage
-Pillow
