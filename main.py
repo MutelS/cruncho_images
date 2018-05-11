@@ -3,15 +3,9 @@ import urllib2
 import webapp2
 import settings
 
-import PIL
-
 from google.appengine.api import images, taskqueue
 from google.cloud.storage import Client
 from google.appengine.ext import db
-# from google.appengine.api import users
-
-# from cors.cors_application import CorsApplication
-# from cors.cors_options import CorsOptions
 
 from requests_toolbelt.adapters import appengine
 
@@ -20,6 +14,17 @@ appengine.monkeypatch()
 
 def get_storage_client():
     return Client(project=settings.PROJECT_NAME)
+
+
+def check_image_by_url(url):
+    error = False
+    error_data = None
+    try:
+        image_at_url = urllib2.urlopen(url)
+    except (Exception, TypeError, ValueError) as e:
+        error = True
+        error_data = e
+    return error, error_data
 
 
 def resize_image(image, new_image):
@@ -46,10 +51,10 @@ def get_thumbnail_image(new_image, url):
 
 
 def get_image_size(new_image):
-    image_at_url = urllib2.urlopen(str(new_image.image_url))
-    im = PIL.Image.open(image_at_url)
-    image_at_url.close()
-    new_image.image_width, new_image.image_height = im.size
+    logging.info("get_image_size")
+    img = get_image_by_url(new_image.image_url)
+    new_image.image_width = img.width
+    new_image.image_height = img.height
     return new_image
 
 
@@ -80,8 +85,11 @@ class Filter(object):
         for name, key in fields.items():
             if key == 'image_width' or key == 'image_height':
                 setattr(self, name, view.get(key))
+            elif key == 'image_name':
+                setattr(self, name, view.get(key, view.get('image_url')))
             else:
                 setattr(self, name, view.get(key, None))
+
         setattr(self, 'bucket_name', settings.BUCKET_NAME)
 
     @property
@@ -110,28 +118,35 @@ class MainPage(webapp2.RequestHandler):
         }
 
         new_image = Filter(self.request, fields)
-        logging.info("kkkk: {}".format(self.request.headers.get('Host')))
+
         #        if self.request.headers.get('Host') not in settings.ACCESS_LIST:
         #        	return self.response.write('\n\nYou do not have access rights!\n')
 
         if new_image.image_url and new_image.image_name:
-            self.response.headers['Content-Type'] = 'image/jpeg'
-            db_image = CrunchoImage.get_or_insert(new_image.image_name, name=new_image.image_name)
+            error, error_data = check_image_by_url(new_image.image_url)
+            if error:
+                return self.response.write('\n\nError %s!\n' % error_data)
+            try:
+                self.response.headers['Content-Type'] = 'image/jpeg'
+                db_image = CrunchoImage.get_or_insert(new_image.image_name, name=new_image.image_name)
 
-            if db_image.processed_url:
-                logging.info("bucket_name: {}".format(new_image.bucket_name))
-                logging.info("db_image.processed_url: {}".format(db_image.processed_url))
-                if new_image.image_height and new_image.image_width:
-                    return self.response.write(get_thumbnail_image(new_image, db_image.processed_url))
-                return webapp2.redirect(str(db_image.processed_url))
+                if db_image.processed_url:
+                    logging.info("bucket_name: {}".format(new_image.bucket_name))
+                    logging.info("db_image.processed_url: {}".format(db_image.processed_url))
+                    if new_image.image_height and new_image.image_width:
+                        return self.response.write(get_thumbnail_image(new_image, db_image.processed_url))
+                    return webapp2.redirect(str(db_image.processed_url))
 
-            new_image.create_task_save_image
-            update_image_in_bd(db_image, new_image)
+                new_image.create_task_save_image
+                update_image_in_bd(db_image, new_image)
 
-            if not new_image.image_height and not new_image.image_width:
-                new_image = get_image_size(new_image)
-            return self.response.write(get_thumbnail_image(new_image, db_image.original_url))
-        return self.response.write('\n\nNo file name or URL!\n')
+                if not new_image.image_height and not new_image.image_width:
+                    new_image = get_image_size(new_image)
+                return self.response.write(get_thumbnail_image(new_image, db_image.original_url))
+            except (Exception, TypeError, ValueError) as e:
+                return self.response.write('\n\nError %s!\n' % e)
+            return self.response.write('\n\nNo file name or URL!\n')
+        return self.response.write('\n\nReceived incorrect data!\n')
 
 
 class SaveImageOnStorage(webapp2.RequestHandler):
@@ -180,6 +195,9 @@ class UploadImageOnStorage(webapp2.RequestHandler):
             return self.response.write('\n\nYou do not have access rights!\n')
 
         if new_image.image_url and new_image.image_name:
+            error, error_data = check_image_by_url(new_image.image_url)
+            if error:
+                return self.response.write('\n\nError %s!\n' % error_data)
             self.response.headers['Content-Type'] = 'image/jpeg'
             db_image = CrunchoImage.get_or_insert(new_image.image_name, name=new_image.image_name)
             blob = get_blob(new_image)
@@ -187,58 +205,12 @@ class UploadImageOnStorage(webapp2.RequestHandler):
             new_image.create_task_save_image
 
             return self.response.write(blob.public_url)
-        return self.response.write('\n\nNo file name or URL!\n')
 
-
-# class AdminPage(webapp2.RequestHandler):
-#     def get(self):
-#         user = users.get_current_user()
-#         logging.info("user: {}".format(user))
-#         if user:
-#             logging.info("user auth: {}".format(user))
-#             if users.is_current_user_admin():
-#                 logging.info("is_current_user_admin: {}".format(users.is_current_user_admin()))
-#                 self.response.write('You are an administrator.')
-#             else:
-#                 self.response.write('You are not an administrator.')
-#         else:
-#             self.response.write('You are not logged in.')
-#
-#
-# class AuthPage(webapp2.RequestHandler):
-#     def get(self):
-#         # [START user_details]
-#         user = users.get_current_user()
-#         if user:
-#             nickname = user.nickname()
-#             logout_url = users.create_logout_url('/')
-#             greeting = 'Welcome, {}! (<a href="{}">sign out</a>)'.format(
-#                 nickname, logout_url)
-#         else:
-#             login_url = users.create_login_url('/')
-#             greeting = '<a href="{}">Sign in</a>'.format(login_url)
-#         # [END user_details]
-#         self.response.write(
-#             '<html><body>{}</body></html>'.format(greeting))
+        return self.response.write('\n\nReceived incorrect data!\n')
 
 
 app = webapp2.WSGIApplication([
     ('/img', MainPage),
     ('/upload_image', UploadImageOnStorage),
     ('/save_image', SaveImageOnStorage)
-    # ('/admin', AdminPage),
-    # ('/auth', AuthPage),
 ], debug=True)
-
-
-
-# webapp = webapp2.WSGIApplication([
-#     ('/img', MainPage),
-#     ('/admin', AdminPage),
-#     ('/auth', AuthPage),
-#     ('/save_image', SaveImageOnStorage)
-# ], debug=True)
-#
-# app = CorsApplication(webapp, CorsOptions(allow_origins=['cruncho.com'],
-#                                           allow_headers=['X-Foo'],
-#                                           continue_on_error=True))

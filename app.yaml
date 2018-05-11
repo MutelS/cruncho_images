@@ -25,6 +25,7 @@ skip_files:
 - .git
 - \.gitignore
 - sitepackages/PIL*
+- lib/PIL*
 - ^\.git/.*
 - ^ (. * /)? #. * # $
 - ^ (. * /)?. * ~ $
