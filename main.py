@@ -86,7 +86,7 @@ class Filter(object):
             if key == 'image_width' or key == 'image_height':
                 setattr(self, name, view.get(key))
             elif key == 'image_name':
-                setattr(self, name, view.get(key, view.get('image_url')))
+                setattr(self, name, view.get(key, view.get('image_url').replace("/", '')))
             else:
                 setattr(self, name, view.get(key, None))
 
