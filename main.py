@@ -1,7 +1,10 @@
+import hmac
+import hashlib
 import logging
 import urllib2
 import webapp2
 import settings
+import requests
 
 from google.appengine.api import images, taskqueue
 from google.cloud.storage import Client
@@ -12,8 +15,32 @@ from requests_toolbelt.adapters import appengine
 appengine.monkeypatch()
 
 
+fields = {
+    'quality': 'quality',
+    'image_width': 'image_width',
+    'image_height': 'image_height',
+    'image_name': 'image_name',
+    'image_url': 'image_url',
+    'signature': 'signature',
+    'api': 'api',
+    'id': 'id',
+    }
+
+
 def get_storage_client():
     return Client(project=settings.PROJECT_NAME)
+
+
+def check_signature(data):
+    if generate_signature(data.image_url) == data.signature:
+        return True
+    return False
+
+
+def generate_signature(data):
+    hash_key_bytes = bytes(settings.HASH_KEY, 'latin-1')
+    data_bytes = bytes(data, 'latin-1')
+    return hmac.new(hash_key_bytes, data_bytes, hashlib.md5).hexdigest()
 
 
 def check_image_by_url(url):
@@ -72,6 +99,19 @@ def update_image_in_bd(db_image, new_image):
     db_image.save()
 
 
+def requests_post(url, data):
+    requests.post(url, data=data)
+
+
+def image_block(data):
+    requests.post(settings.IMAGE_BLOCK_API_URL, {
+        "api": data.api,
+        "id": data.id,
+        "signature": data.signature,
+        "image_url": data.image_url,
+    })
+
+
 class CrunchoImage(db.Model):
     name = db.StringProperty()
     original_url = db.StringProperty()
@@ -100,8 +140,11 @@ class Filter(object):
                     'image_name': self.image_name,
                     'image_width': self.image_width,
                     'image_height': self.image_height,
-                    'bucket_name': self.bucket_name}
-        )
+                    'bucket_name': self.bucket_name,
+                    'signature': self.signature,
+                    'api': self.api,
+                    'id': self.id,
+                    })
 
 
 class MainPage(webapp2.RequestHandler):
@@ -109,22 +152,13 @@ class MainPage(webapp2.RequestHandler):
         self.response.headers.add_header('Access-Control-Allow-Origin', settings.ACCESS_CONTROL_ALLOW_ORIGIN)
         self.response.headers['Content-Type'] = 'text/plain'
 
-        fields = {
-            'quality': 'quality',
-            'image_width': 'image_width',
-            'image_height': 'image_height',
-            'image_name': 'image_name',
-            'image_url': 'image_url',
-        }
-
         new_image = Filter(self.request, fields)
 
-        #        if self.request.headers.get('Host') not in settings.ACCESS_LIST:
-        #        	return self.response.write('\n\nYou do not have access rights!\n')
-
         if new_image.image_url and new_image.image_name:
+            # if check_signature(new_image):
             error, error_data = check_image_by_url(new_image.image_url)
             if error:
+                image_block(new_image)
                 return self.response.write('\n\nError %s!\n' % error_data)
             try:
                 self.response.headers['Content-Type'] = 'image/jpeg'
@@ -146,18 +180,12 @@ class MainPage(webapp2.RequestHandler):
             except (Exception, TypeError, ValueError) as e:
                 return self.response.write('\n\nError %s!\n' % e)
             return self.response.write('\n\nNo file name or URL!\n')
+            # return self.response.write('\n\nYou do not have access rights!\n')
         return self.response.write('\n\nReceived incorrect data!\n')
 
 
 class SaveImageOnStorage(webapp2.RequestHandler):
     def post(self):
-        fields = {
-            'quality': 'quality',
-            'image_width': 'image_width',
-            'image_height': 'image_height',
-            'image_name': 'image_name',
-            'image_url': 'image_url',
-        }
 
         new_image = Filter(self.request, fields)
 
@@ -178,34 +206,22 @@ class UploadImageOnStorage(webapp2.RequestHandler):
         self.response.headers.add_header('Access-Control-Allow-Origin', settings.ACCESS_CONTROL_ALLOW_ORIGIN)
         self.response.headers['Content-Type'] = 'text/plain'
 
-        if self.request.headers.get('Host') not in settings.ACCESS_LIST:
-            return self.response.write('\n\nYou do not have access rights!\n')
-
-        fields = {
-            'quality': 'quality',
-            'image_width': 'image_width',
-            'image_height': 'image_height',
-            'image_name': 'image_name',
-            'image_url': 'image_url',
-        }
-
         new_image = Filter(self.request, fields)
 
-        if self.request.headers.get('Host') not in settings.ACCESS_LIST:
-            return self.response.write('\n\nYou do not have access rights!\n')
-
         if new_image.image_url and new_image.image_name:
-            error, error_data = check_image_by_url(new_image.image_url)
-            if error:
-                return self.response.write('\n\nError %s!\n' % error_data)
-            self.response.headers['Content-Type'] = 'image/jpeg'
-            db_image = CrunchoImage.get_or_insert(new_image.image_name, name=new_image.image_name)
-            blob = get_blob(new_image)
-            update_image_in_bd(db_image, new_image)
-            new_image.create_task_save_image
+            if check_signature(new_image):
+                error, error_data = check_image_by_url(new_image.image_url)
+                if error:
+                    image_block(new_image)
+                    return self.response.write('\n\nError %s!\n' % error_data)
+                self.response.headers['Content-Type'] = 'image/jpeg'
+                db_image = CrunchoImage.get_or_insert(new_image.image_name, name=new_image.image_name)
+                blob = get_blob(new_image)
+                update_image_in_bd(db_image, new_image)
+                new_image.create_task_save_image
 
-            return self.response.write(blob.public_url)
-
+                return self.response.write(blob.public_url)
+            return self.response.write('\n\nYou do not have access rights!\n')
         return self.response.write('\n\nReceived incorrect data!\n')
 
 
